@@ -269,6 +269,7 @@ let audioCtx = null;
 let advanceTimer = null;
 let autoPlayTimer = null;
 let isUnlimited = false;
+let activeNodes = []; // track playing oscillators
 
 // ===== STORAGE =====
 const STORAGE_KEY = 'pitchTestHistory';
@@ -315,6 +316,7 @@ function showScreen(name) {
 function clearTimers() {
   if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
   if (autoPlayTimer) { clearTimeout(autoPlayTimer); autoPlayTimer = null; }
+  if (enableBtnsTimer) { clearTimeout(enableBtnsTimer); enableBtnsTimer = null; }
 }
 
 // ===== SETUP UI =====
@@ -362,15 +364,29 @@ function playTone(freq, startTime, dur) {
   gain.gain.linearRampToValueAtTime(0, startTime + dur);
   osc.connect(gain); gain.connect(audioCtx.destination);
   osc.start(startTime); osc.stop(startTime + dur);
+  activeNodes.push({ osc, gain });
+  // Clean up reference after tone ends
+  setTimeout(() => {
+    activeNodes = activeNodes.filter(n => n.osc !== osc);
+  }, (startTime - audioCtx.currentTime + dur) * 1000 + 50);
+}
+
+function stopAllTones() {
+  activeNodes.forEach(({ osc, gain }) => {
+    try { gain.gain.cancelScheduledValues(0); gain.gain.setValueAtTime(0, audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.01); }
+    catch {}
+  });
+  activeNodes = [];
 }
 
 const TONE_DUR = 0.4;
 const TONE_GAP = 0.3;
 const PAIR_TOTAL_MS = (TONE_DUR * 2 + TONE_GAP) * 1000 + 100;
+let enableBtnsTimer = null;
 
 // ===== GENERATE TRIAL =====
 function generatePair() {
-  const logMin = Math.log(100), logMax = Math.log(1200);
+  const logMin = Math.log(150), logMax = Math.log(1000);
   const baseFreq = Math.exp(logMin + Math.random() * (logMax - logMin));
   const higherFreq = freqFromErb(erbRate(baseFreq) + config.erbDelta);
   const hzDiff = higherFreq - baseFreq;
@@ -429,6 +445,9 @@ function resetButtons() {
 
 function doPlayPair() {
   ensureAudio();
+  stopAllTones();
+  if (enableBtnsTimer) { clearTimeout(enableBtnsTimer); enableBtnsTimer = null; }
+
   const p = state.currentPair;
   const now = audioCtx.currentTime;
   playTone(p.f1, now + 0.05, TONE_DUR);
@@ -439,7 +458,8 @@ function doPlayPair() {
   setTimeout(() => btn.classList.remove('playing'), PAIR_TOTAL_MS);
 
   // Enable buttons after pair finishes
-  setTimeout(() => {
+  enableBtnsTimer = setTimeout(() => {
+    enableBtnsTimer = null;
     if (!state.answered) {
       state.hasPlayed = true;
       document.getElementById('btnLower').disabled = false;
@@ -457,6 +477,10 @@ function playPair() {
     advanceToNext();
     return;
   }
+  // Disable buttons during replay — doPlayPair re-enables after pair finishes
+  document.getElementById('btnLower').disabled = true;
+  document.getElementById('btnSame').disabled = true;
+  document.getElementById('btnHigher').disabled = true;
   doPlayPair();
 }
 
