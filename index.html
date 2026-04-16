@@ -162,6 +162,866 @@
     padding: 8px 6px; color: #666; font-weight: 400; border-bottom: 1px solid #222;
     text-transform: uppercase; letter-spacing: 0.5px; font-size: 9px;
   }
+  .history-table td { padding: 7px 6px; border-bottom: 1px solid #111; color: #aaa; cursor: pointer; }
+  .history-table tr:hover td { color: #e8a838; }
+  .history-table .good { color: #4CAF50; }
+  .history-table .mid { color: #e8a838; }
+  .history-table .low { color: #F44336; }
+
+  .session-detail {
+    margin-bottom: 20px; padding: 16px; background: #111; border: 1px solid #222;
+    border-radius: 4px; text-align: center;
+  }
+  .session-detail-title { font-size: 11px; color: #888; margin-bottom: 12px; }
+  .session-detail .matrix { margin-bottom: 12px; }
+  .session-detail .error-summary { margin-bottom: 8px; }
+  .session-close {
+    background: none; border: 1px solid #333; border-radius: 4px;
+    color: #888; font-family: inherit; font-size: 10px; padding: 6px 16px;
+    cursor: pointer; margin-top: 8px;
+  }
+  .session-close:hover { border-color: #555; color: #ccc; }
+
+  .agg-section { margin-top: 24px; margin-bottom: 24px; }
+  .agg-title { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px; }
+  .pooled-matrix { display: inline-block; border-collapse: collapse; font-size: 11px; margin-bottom: 16px; }
+  .pooled-matrix th { padding: 5px 10px; color: #777; font-weight: 400; border-bottom: 1px solid #222; }
+  .pooled-matrix td { padding: 5px 10px; text-align: center; border-bottom: 1px solid #111; }
+  .pooled-matrix .row-label { color: #777; text-align: right; font-style: italic; }
+  .pooled-matrix .diag { color: #4CAF50; }
+  .pooled-matrix .off { color: #555; }
+  .pooled-matrix .off.labeling { color: #e8a838; }
+  .pooled-matrix .off.detection { color: #F44336; }
+  .pooled-stats { font-size: 11px; color: #666; line-height: 1.8; margin-bottom: 16px; }
+
+  .band-section { margin-top: 16px; margin-bottom: 8px; }
+  .band-title { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+  .band-row {
+    display: flex; align-items: center; gap: 8px; margin-bottom: 6px; font-size: 11px;
+  }
+  .band-label { width: 80px; text-align: right; color: #777; flex-shrink: 0; font-size: 10px; }
+  .band-bar-bg {
+    flex: 1; height: 18px; background: #1a1a1a; border-radius: 3px; overflow: hidden; position: relative;
+  }
+  .band-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s; min-width: 1px; }
+  .band-bar-fill.good { background: #4CAF5088; }
+  .band-bar-fill.mid { background: #e8a83888; }
+  .band-bar-fill.low { background: #F4433688; }
+  .band-stat { width: 72px; text-align: left; color: #888; flex-shrink: 0; font-size: 10px; }
+
+  .danger-zone { margin-top: 40px; padding-top: 20px; border-top: 1px solid #1a1a1a; }
+  .danger-btn {
+    background: none; border: 1px solid #331111; border-radius: 4px;
+    color: #663333; font-family: inherit; font-size: 10px; padding: 8px 16px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .danger-btn:hover { border-color: #F44336; color: #F44336; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Pitch Test</h1>
+  <div class="subtitle">ERB-calibrated · lower / same / higher</div>
+
+  <div class="nav">
+    <button class="nav-btn active" onclick="showScreen('setup')">Test</button>
+    <button class="nav-btn" onclick="showScreen('history')">History</button>
+  </div>
+
+  <!-- SETUP -->
+  <div class="screen active" id="setupScreen">
+    <div class="section-label">Difficulty (Hz @ 500)</div>
+    <div class="difficulty-grid" id="diffGrid"></div>
+
+    <div class="section-label">Trials</div>
+    <div class="trials-row">
+      <div class="trial-btn" data-n="15" onclick="selectTrials(this, 15)">15</div>
+      <div class="trial-btn selected" data-n="30" onclick="selectTrials(this, 30)">30</div>
+      <div class="trial-btn" data-n="50" onclick="selectTrials(this, 50)">50</div>
+      <input class="trial-input" id="customTrials" type="number" min="5" max="999" placeholder="#" onfocus="selectTrialsCustom()" oninput="selectTrialsCustom()">
+      <div class="trial-btn" data-n="0" onclick="selectTrials(this, 0)">∞</div>
+    </div>
+
+    <button class="start-btn" onclick="startTest()">Start</button>
+  </div>
+
+  <!-- TEST -->
+  <div class="screen" id="testScreen">
+    <div class="progress-bar" id="progressBar"><div class="progress-fill" id="progress"></div></div>
+    <div class="trial-counter" id="counter">1 / 30</div>
+    <div class="play-btn" id="playBtn" onclick="playPair()">
+      <div class="play-icon"></div>
+    </div>
+    <div class="answer-row">
+      <button class="answer-btn" id="btnLower" onclick="answer('lower')" disabled>↓ Low</button>
+      <button class="answer-btn" id="btnSame" onclick="answer('same')" disabled>= Same</button>
+      <button class="answer-btn" id="btnHigher" onclick="answer('higher')" disabled>↑ High</button>
+    </div>
+    <div class="feedback" id="feedback">&nbsp;</div>
+    <div class="running-stats" id="runStats"></div>
+    <div class="stop-row" id="stopRow" style="display:none">
+      <button class="stop-btn" onclick="stopUnlimited()">Stop & Save</button>
+    </div>
+  </div>
+
+  <!-- RESULT -->
+  <div class="screen" id="resultScreen">
+    <div class="result-big" id="resPct"></div>
+    <div class="result-detail" id="resDetail"></div>
+    <div class="result-pvalue" id="resPval"></div>
+    <div class="matrix-title">Confusion Matrix</div>
+    <div id="matrixContainer"></div>
+    <div class="error-summary" id="errorSummary"></div>
+    <div class="result-meta" id="resMeta"></div>
+    <div class="btn-row">
+      <button class="secondary-btn" onclick="showScreen('setup')">New Test</button>
+      <button class="secondary-btn" onclick="showScreen('history')">History</button>
+    </div>
+  </div>
+
+  <!-- HISTORY -->
+  <div class="screen" id="historyScreen">
+    <div id="historyContent"></div>
+  </div>
+</div>
+
+<script>
+// ===== ERB MATH =====
+function erbRate(f) { return 21.4 * Math.log10(1 + 0.00437 * f); }
+function freqFromErb(e) { return (Math.pow(10, e / 21.4) - 1) / 0.00437; }
+function hzToErb(hz) { return erbRate(500 + hz) - erbRate(500); }
+
+// ===== PRESETS =====
+const PRESETS = [16, 12, 8, 5, 3, 1.5];
+
+// ===== FREQUENCY BANDS (equal ERB-rate spans) =====
+const FREQ_MIN = 150, FREQ_MAX = 1000;
+const ERB_MIN = erbRate(FREQ_MIN), ERB_MAX = erbRate(FREQ_MAX);
+const ERB_SPAN = ERB_MAX - ERB_MIN;
+const BAND_BOUNDARIES = [
+  FREQ_MIN,
+  freqFromErb(ERB_MIN + ERB_SPAN / 3),
+  freqFromErb(ERB_MIN + 2 * ERB_SPAN / 3),
+  FREQ_MAX
+];
+const BAND_LABELS = [
+  `${Math.round(BAND_BOUNDARIES[0])}–${Math.round(BAND_BOUNDARIES[1])}`,
+  `${Math.round(BAND_BOUNDARIES[1])}–${Math.round(BAND_BOUNDARIES[2])}`,
+  `${Math.round(BAND_BOUNDARIES[2])}–${Math.round(BAND_BOUNDARIES[3])}`,
+];
+
+function getBand(freq) {
+  if (freq < BAND_BOUNDARIES[1]) return 0;
+  if (freq < BAND_BOUNDARIES[2]) return 1;
+  return 2;
+}
+
+// ===== CONFIG & STATE =====
+let config = { hzAt500: 5, erbDelta: hzToErb(5), trials: 30 }; // trials=0 means unlimited
+let state = { trial: 0, correct: 0, results: [], currentPair: null, hasPlayed: false, answered: false };
+let audioCtx = null;
+let advanceTimer = null;
+let autoPlayTimer = null;
+let isUnlimited = false;
+let activeNodes = []; // track playing oscillators
+
+// ===== STORAGE =====
+const STORAGE_KEY = 'pitchTestHistory';
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || []; }
+  catch { return []; }
+}
+function saveSession(session) {
+  const h = loadHistory(); h.push(session);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(h));
+}
+function clearHistory() {
+  if (confirm('Delete all saved results?')) {
+    localStorage.removeItem(STORAGE_KEY);
+    renderHistory();
+  }
+}
+
+// ===== NAVIGATION =====
+function showScreen(name) {
+  // If leaving test screen during unlimited, save
+  if (document.getElementById('testScreen').classList.contains('active') && isUnlimited && state.results.length > 0) {
+    finishTest();
+    return; // finishTest shows result screen
+  }
+  clearTimers();
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+
+  if (name === 'setup') {
+    document.getElementById('setupScreen').classList.add('active');
+    document.querySelectorAll('.nav-btn')[0].classList.add('active');
+  } else if (name === 'test') {
+    document.getElementById('testScreen').classList.add('active');
+  } else if (name === 'result') {
+    document.getElementById('resultScreen').classList.add('active');
+  } else if (name === 'history') {
+    document.getElementById('historyScreen').classList.add('active');
+    document.querySelectorAll('.nav-btn')[1].classList.add('active');
+    renderHistory();
+  }
+}
+
+function clearTimers() {
+  if (advanceTimer) { clearTimeout(advanceTimer); advanceTimer = null; }
+  if (autoPlayTimer) { clearTimeout(autoPlayTimer); autoPlayTimer = null; }
+  if (enableBtnsTimer) { clearTimeout(enableBtnsTimer); enableBtnsTimer = null; }
+}
+
+// ===== SETUP UI =====
+function buildDiffGrid() {
+  const grid = document.getElementById('diffGrid');
+  grid.innerHTML = PRESETS.map(hz => {
+    const sel = hz === config.hzAt500 ? ' selected' : '';
+    return `<div class="diff-btn${sel}" data-hz="${hz}" onclick="selectDiff(${hz})">${hz} Hz<div class="diff-sub">ERB ${hzToErb(hz).toFixed(3)}</div></div>`;
+  }).join('');
+}
+
+function selectDiff(hz) {
+  config.hzAt500 = hz;
+  config.erbDelta = hzToErb(hz);
+  document.querySelectorAll('.diff-btn').forEach(b => {
+    b.classList.toggle('selected', parseFloat(b.dataset.hz) === hz);
+  });
+}
+
+function selectTrials(el, n) {
+  document.querySelectorAll('.trial-btn').forEach(b => b.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('customTrials').value = '';
+  config.trials = n;
+}
+
+function selectTrialsCustom() {
+  document.querySelectorAll('.trial-btn').forEach(b => b.classList.remove('selected'));
+  const v = parseInt(document.getElementById('customTrials').value);
+  if (!isNaN(v) && v >= 5) config.trials = v;
+}
+
+// ===== AUDIO =====
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+function playTone(freq, startTime, dur) {
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = 'sine'; osc.frequency.value = freq;
+  gain.gain.setValueAtTime(0, startTime);
+  gain.gain.linearRampToValueAtTime(0.3, startTime + 0.02);
+  gain.gain.setValueAtTime(0.3, startTime + dur - 0.02);
+  gain.gain.linearRampToValueAtTime(0, startTime + dur);
+  osc.connect(gain); gain.connect(audioCtx.destination);
+  osc.start(startTime); osc.stop(startTime + dur);
+  activeNodes.push({ osc, gain });
+  // Clean up reference after tone ends
+  setTimeout(() => {
+    activeNodes = activeNodes.filter(n => n.osc !== osc);
+  }, (startTime - audioCtx.currentTime + dur) * 1000 + 50);
+}
+
+function stopAllTones() {
+  activeNodes.forEach(({ osc, gain }) => {
+    try { gain.gain.cancelScheduledValues(0); gain.gain.setValueAtTime(0, audioCtx.currentTime); osc.stop(audioCtx.currentTime + 0.01); }
+    catch {}
+  });
+  activeNodes = [];
+}
+
+const TONE_DUR = 0.4;
+const TONE_GAP = 0.3;
+const PAIR_TOTAL_MS = (TONE_DUR * 2 + TONE_GAP) * 1000 + 100;
+let enableBtnsTimer = null;
+
+// ===== GENERATE TRIAL =====
+function generatePair() {
+  // ERB-uniform: equal probability per ERB-rate unit
+  const erbMin = erbRate(150), erbMax = erbRate(1000);
+  const baseFreq = freqFromErb(erbMin + Math.random() * (erbMax - erbMin));
+  const higherFreq = freqFromErb(erbRate(baseFreq) + config.erbDelta);
+  const hzDiff = higherFreq - baseFreq;
+
+  const r = Math.random();
+  let trialType, f1, f2;
+  if (r < 1/3) { trialType = 'lower'; f1 = higherFreq; f2 = baseFreq; }
+  else if (r < 2/3) { trialType = 'same'; f1 = baseFreq; f2 = baseFreq; }
+  else { trialType = 'higher'; f1 = baseFreq; f2 = higherFreq; }
+
+  return { baseFreq: Math.round(baseFreq * 10) / 10, f1, f2, trialType, correctAnswer: trialType, hzDiff: Math.round(hzDiff * 10) / 10 };
+}
+
+// ===== TEST FLOW =====
+function startTest() {
+  clearTimers();
+  isUnlimited = config.trials === 0;
+  state = { trial: 0, correct: 0, results: [], currentPair: generatePair(), hasPlayed: false, answered: false };
+  showScreenDirect('test');
+
+  // UI
+  const pbar = document.getElementById('progressBar');
+  if (isUnlimited) {
+    pbar.classList.add('hidden');
+    document.getElementById('counter').textContent = '1';
+    document.getElementById('stopRow').style.display = '';
+  } else {
+    pbar.classList.remove('hidden');
+    document.getElementById('counter').textContent = `1 / ${config.trials}`;
+    document.getElementById('progress').style.width = '0%';
+    document.getElementById('stopRow').style.display = 'none';
+  }
+  document.getElementById('feedback').innerHTML = '&nbsp;';
+  document.getElementById('runStats').textContent = '';
+  resetButtons();
+
+  // Auto-play first pair
+  ensureAudio();
+  setTimeout(() => doPlayPair(), 200);
+}
+
+// Direct screen switch without the unlimited-save guard
+function showScreenDirect(name) {
+  clearTimers();
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+  if (name === 'test') document.getElementById('testScreen').classList.add('active');
+  else if (name === 'result') document.getElementById('resultScreen').classList.add('active');
+}
+
+function resetButtons() {
+  ['btnLower','btnSame','btnHigher'].forEach(id => {
+    const b = document.getElementById(id); b.disabled = true; b.className = 'answer-btn';
+  });
+}
+
+function doPlayPair() {
+  ensureAudio();
+  stopAllTones();
+  if (enableBtnsTimer) { clearTimeout(enableBtnsTimer); enableBtnsTimer = null; }
+
+  const p = state.currentPair;
+  const now = audioCtx.currentTime;
+  playTone(p.f1, now + 0.05, TONE_DUR);
+  playTone(p.f2, now + 0.05 + TONE_DUR + TONE_GAP, TONE_DUR);
+
+  const btn = document.getElementById('playBtn');
+  btn.classList.add('playing');
+  setTimeout(() => btn.classList.remove('playing'), PAIR_TOTAL_MS);
+
+  // Enable buttons after pair finishes
+  enableBtnsTimer = setTimeout(() => {
+    enableBtnsTimer = null;
+    if (!state.answered) {
+      state.hasPlayed = true;
+      document.getElementById('btnLower').disabled = false;
+      document.getElementById('btnSame').disabled = false;
+      document.getElementById('btnHigher').disabled = false;
+    }
+  }, PAIR_TOTAL_MS);
+}
+
+function playPair() {
+  ensureAudio();
+  if (state.answered) {
+    // Skip waiting, go to next
+    clearTimers();
+    advanceToNext();
+    return;
+  }
+  // Disable buttons during replay — doPlayPair re-enables after pair finishes
+  document.getElementById('btnLower').disabled = true;
+  document.getElementById('btnSame').disabled = true;
+  document.getElementById('btnHigher').disabled = true;
+  doPlayPair();
+}
+
+const btnIds = { lower: 'btnLower', same: 'btnSame', higher: 'btnHigher' };
+
+function answer(choice) {
+  if (state.answered || !state.hasPlayed) return;
+  state.answered = true;
+
+  const p = state.currentPair;
+  const isCorrect = choice === p.correctAnswer;
+  if (isCorrect) state.correct++;
+  state.results.push({ ...p, userAnswer: choice, correct: isCorrect });
+
+  const fb = document.getElementById('feedback');
+  fb.textContent = isCorrect ? '✓' : '✗';
+  fb.className = isCorrect ? 'feedback correct' : 'feedback wrong';
+
+  document.getElementById(btnIds[p.correctAnswer]).classList.add('correct');
+  if (!isCorrect) document.getElementById(btnIds[choice]).classList.add('wrong');
+
+  document.getElementById('btnLower').disabled = true;
+  document.getElementById('btnSame').disabled = true;
+  document.getElementById('btnHigher').disabled = true;
+
+  document.getElementById('runStats').textContent =
+    `${state.correct}/${state.trial + 1} (${Math.round(state.correct/(state.trial+1)*100)}%)`;
+
+  // Auto-advance after 300ms, then auto-play
+  advanceTimer = setTimeout(() => {
+    advanceTimer = null;
+    if (!isUnlimited && state.trial + 1 >= config.trials) {
+      finishTest();
+    } else {
+      advanceToNext();
+    }
+  }, 300);
+}
+
+function advanceToNext() {
+  state.trial++;
+  state.currentPair = generatePair();
+  state.hasPlayed = false;
+  state.answered = false;
+
+  if (isUnlimited) {
+    document.getElementById('counter').textContent = `${state.trial + 1}`;
+  } else {
+    document.getElementById('counter').textContent = `${state.trial + 1} / ${config.trials}`;
+    document.getElementById('progress').style.width = `${(state.trial / config.trials) * 100}%`;
+  }
+  document.getElementById('feedback').innerHTML = '&nbsp;';
+  document.getElementById('feedback').className = 'feedback';
+  resetButtons();
+
+  // Auto-play next pair
+  autoPlayTimer = setTimeout(() => {
+    autoPlayTimer = null;
+    doPlayPair();
+  }, 100);
+}
+
+function stopUnlimited() {
+  clearTimers();
+  if (state.results.length > 0) finishTest();
+  else showScreen('setup');
+}
+
+// Save on page hide (for unlimited mode)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden' && isUnlimited && state.results.length > 0 &&
+      document.getElementById('testScreen').classList.contains('active')) {
+    finishTestSilent();
+  }
+});
+
+// ===== P-VALUE =====
+function binomPVal(n, k, p0) {
+  if (n > 200) {
+    // Normal approximation for large n
+    const mu = n * p0, sigma = Math.sqrt(n * p0 * (1 - p0));
+    const z = (k - 0.5 - mu) / sigma;
+    return 1 - normalCDF(z);
+  }
+  let p = 0;
+  for (let i = k; i <= n; i++) p += bc(n, i) * Math.pow(p0, i) * Math.pow(1 - p0, n - i);
+  return p;
+}
+function bc(n, k) {
+  if (k > n) return 0;
+  if (k === 0 || k === n) return 1;
+  let r = 1;
+  for (let i = 0; i < k; i++) r = r * (n - i) / (i + 1);
+  return r;
+}
+function normalCDF(x) {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const d = 0.3989422804014327;
+  const p = d * Math.exp(-x * x / 2) * (t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))));
+  return x > 0 ? 1 - p : p;
+}
+
+// ===== FINISH =====
+function finishTest() {
+  clearTimers();
+  isUnlimited = false;
+  const session = buildSession();
+  saveSession(session);
+  showScreenDirect('result');
+  renderResult(session);
+}
+
+function finishTestSilent() {
+  // Save without switching screens (for visibilitychange)
+  clearTimers();
+  const session = buildSession();
+  saveSession(session);
+  isUnlimited = false;
+}
+
+function buildSession() {
+  const n = state.results.length, k = state.correct;
+  const pct = Math.round(k / n * 100);
+  const pval = binomPVal(n, k, 1/3);
+
+  const types = ['lower', 'same', 'higher'];
+  const matrix = {};
+  types.forEach(a => { matrix[a] = {}; types.forEach(r => { matrix[a][r] = 0; }); });
+  state.results.forEach(r => { matrix[r.trialType][r.userAnswer]++; });
+
+  let detErr = 0, labErr = 0;
+  state.results.forEach(r => {
+    if (r.correct) return;
+    if (r.trialType === 'same') detErr++;
+    else if (r.userAnswer === 'same') detErr++;
+    else labErr++;
+  });
+
+  return {
+    date: new Date().toISOString(),
+    hzAt500: config.hzAt500,
+    erbDelta: config.erbDelta,
+    trials: n, correct: k, pct, pval,
+    detectionErrors: detErr, labelingErrors: labErr,
+    matrix,
+    rawTrials: state.results.map(r => ({
+      trialType: r.trialType, userAnswer: r.userAnswer, correct: r.correct,
+      baseFreq: r.baseFreq, hzDiff: r.hzDiff,
+    })),
+  };
+}
+
+function renderMatrix(matrix, tableClass) {
+  const types = ['lower', 'same', 'higher'];
+  const labels = { lower: '↓ Low', same: '= Same', higher: '↑ High' };
+  const isResult = tableClass === 'matrix';
+  let html = `<table class="${tableClass}">`;
+  // Header row with "Response" label
+  html += `<tr><th style="font-size:9px;color:#444">Actual \\ Response</th>`;
+  types.forEach(r => { html += `<th>${labels[r]}</th>`; });
+  html += '</tr>';
+  types.forEach(actual => {
+    html += `<tr><td class="row-label">${labels[actual]}</td>`;
+    types.forEach(resp => {
+      const v = matrix[actual]?.[resp] || 0;
+      let cls;
+      if (actual === resp) {
+        cls = 'diag';
+      } else if (actual !== 'same' && resp !== 'same') {
+        cls = isResult ? 'off-diag labeling' : 'off labeling';
+      } else {
+        cls = isResult ? 'off-diag detection' : 'off detection';
+      }
+      html += `<td class="${cls}">${v}</td>`;
+    });
+    html += '</tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
+let selectedSessionIdx = null;
+
+function showSessionDetail(idx) {
+  selectedSessionIdx = (selectedSessionIdx === idx) ? null : idx;
+  renderHistory();
+}
+
+function renderResult(s) {
+  const pctEl = document.getElementById('resPct');
+  pctEl.textContent = `${s.pct}%`;
+  pctEl.className = s.pval < 0.05 ? 'result-big pass' : s.pval < 0.10 ? 'result-big borderline' : 'result-big fail';
+
+  document.getElementById('resDetail').textContent = `${s.correct} / ${s.trials} correct`;
+  document.getElementById('resPval').textContent =
+    `${s.pval < 0.001 ? 'p < 0.001' : 'p = ' + s.pval.toFixed(3)} (vs chance = 33%)`;
+
+  // Matrix
+  document.getElementById('matrixContainer').innerHTML = renderMatrix(s.matrix, 'matrix');
+
+  // Error summary
+  const totalErr = s.trials - s.correct;
+  let sum = `<span class="el" style="background:#F44336"></span> Detection: ${s.detectionErrors}<br>`;
+  sum += `<span class="el" style="background:#e8a838"></span> Labeling: ${s.labelingErrors}<br><br>`;
+  if (totalErr === 0) sum += `Perfect at ${s.hzAt500} Hz. Try harder.`;
+  else if (s.labelingErrors > s.detectionErrors) sum += `Bottleneck: <b>labeling</b>. You hear it but mislabel direction.`;
+  else if (s.detectionErrors > s.labelingErrors) sum += `Bottleneck: <b>detection</b>. ~${s.hzAt500} Hz is at your threshold.`;
+  else sum += `Equal detection and labeling errors at ~${s.hzAt500} Hz.`;
+  document.getElementById('errorSummary').innerHTML = sum;
+
+  const freqs = state.results.map(r => r.baseFreq);
+  const diffs = state.results.filter(r => r.hzDiff > 0).map(r => r.hzDiff);
+  document.getElementById('resMeta').textContent =
+    `Freq: ${Math.round(Math.min(...freqs))}–${Math.round(Math.max(...freqs))} Hz · ` +
+    `Delta: ${diffs.length ? Math.min(...diffs).toFixed(1) + '–' + Math.max(...diffs).toFixed(1) : '—'} Hz ` +
+    `(${s.erbDelta.toFixed(3)} ERB)`;
+}
+
+// ===== HISTORY =====
+let historyFilter = 'all';
+
+function renderHistory() {
+  const history = loadHistory();
+  const el = document.getElementById('historyContent');
+
+  if (history.length === 0) {
+    el.innerHTML = '<div class="history-empty">No tests yet.</div>';
+    return;
+  }
+
+  const diffs = [...new Set(history.map(h => h.hzAt500))].sort((a, b) => b - a);
+
+  let html = '<div class="history-controls">';
+  html += `<button class="filter-btn ${historyFilter === 'all' ? 'active' : ''}" onclick="setFilter('all')">All</button>`;
+  diffs.forEach(d => {
+    html += `<button class="filter-btn ${historyFilter === d ? 'active' : ''}" onclick="setFilter(${d})">${d} Hz</button>`;
+  });
+  html += '</div>';
+
+  const filtered = historyFilter === 'all' ? history : history.filter(h => h.hzAt500 === historyFilter);
+
+  html += '<table class="history-table">';
+  html += '<tr><th>Date</th><th>Hz</th><th>Score</th><th>Det</th><th>Lab</th></tr>';
+  filtered.slice().reverse().forEach((h, displayIdx) => {
+    const realIdx = history.indexOf(h);
+    const d = new Date(h.date);
+    const ds = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`;
+    const ts = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+    const cls = h.pct >= 60 ? 'good' : h.pct >= 45 ? 'mid' : 'low';
+    html += `<tr onclick="showSessionDetail(${realIdx})"><td>${ds} ${ts}</td><td>${h.hzAt500}</td><td class="${cls}">${h.correct}/${h.trials} (${h.pct}%)</td><td>${h.detectionErrors}</td><td>${h.labelingErrors}</td></tr>`;
+
+    // Session detail panel
+    if (selectedSessionIdx === realIdx && h.matrix) {
+      html += `<tr><td colspan="5" style="padding:0;border:none"><div class="session-detail">`;
+      html += `<div class="session-detail-title">${ds} ${ts} · ${h.hzAt500} Hz · ${h.trials} trials</div>`;
+      html += renderMatrix(h.matrix, 'pooled-matrix');
+      const totalErr = h.trials - h.correct;
+      let sum = `<div class="error-summary">`;
+      sum += `<span class="el" style="background:#F44336"></span> Detection: ${h.detectionErrors}<br>`;
+      sum += `<span class="el" style="background:#e8a838"></span> Labeling: ${h.labelingErrors}`;
+      if (totalErr > 0) {
+        if (h.labelingErrors > h.detectionErrors) sum += `<br><br>Bottleneck: <b>labeling</b>`;
+        else if (h.detectionErrors > h.labelingErrors) sum += `<br><br>Bottleneck: <b>detection</b>`;
+        else sum += `<br><br>Equal detection and labeling errors`;
+      }
+      sum += `</div>`;
+      html += sum;
+      html += `<button class="session-close" onclick="showSessionDetail(${realIdx})">Close</button>`;
+      html += `</div></td></tr>`;
+    }
+  });
+  html += '</table>';
+
+  // Pooled analysis
+  if (filtered.length >= 2) {
+    const types = ['lower', 'same', 'higher'];
+    const pooled = {};
+    types.forEach(a => { pooled[a] = {}; types.forEach(r => { pooled[a][r] = 0; }); });
+
+    let tt = 0, tc = 0, td = 0, tl = 0;
+    filtered.forEach(h => {
+      tt += h.trials; tc += h.correct; td += h.detectionErrors; tl += h.labelingErrors;
+      if (h.matrix) types.forEach(a => { types.forEach(r => { pooled[a][r] += (h.matrix[a]?.[r] || 0); }); });
+    });
+
+    html += '<div class="agg-section">';
+    html += `<div class="agg-title">Pooled (${filtered.length} sessions, ${tt} trials)</div>`;
+
+    html += renderMatrix(pooled, 'pooled-matrix');
+
+    html += `<div class="pooled-stats">`;
+    html += `Accuracy: ${tc}/${tt} (${Math.round(tc/tt*100)}%)<br>`;
+    html += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#F44336;vertical-align:middle;margin-right:4px"></span>Detection: ${td} · `;
+    html += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#e8a838;vertical-align:middle;margin-right:4px"></span>Labeling: ${tl}`;
+    html += `</div>`;
+
+    // Band analysis
+    const allTrials = [];
+    filtered.forEach(h => {
+      if (h.rawTrials) h.rawTrials.forEach(t => allTrials.push(t));
+    });
+
+    if (allTrials.length > 0) {
+      const bandData = [
+        { correct: 0, total: 0 },
+        { correct: 0, total: 0 },
+        { correct: 0, total: 0 },
+      ];
+      allTrials.forEach(t => {
+        const b = getBand(t.baseFreq);
+        bandData[b].total++;
+        if (t.correct) bandData[b].correct++;
+      });
+
+      html += '<div class="band-section">';
+      html += '<div class="band-title">Accuracy by frequency band</div>';
+      bandData.forEach((bd, i) => {
+        if (bd.total === 0) return;
+        const pct = Math.round(bd.correct / bd.total * 100);
+        const cls = pct >= 60 ? 'good' : pct >= 45 ? 'mid' : 'low';
+        html += `<div class="band-row">`;
+        html += `<div class="band-label">${BAND_LABELS[i]} Hz</div>`;
+        html += `<div class="band-bar-bg"><div class="band-bar-fill ${cls}" style="width:${pct}%"></div></div>`;
+        html += `<div class="band-stat">${bd.correct}/${bd.total} (${pct}%)</div>`;
+        html += `</div>`;
+      });
+      html += '</div>';
+    }
+
+    html += '</div>';
+  }
+
+  html += '<div class="danger-zone"><button class="danger-btn" onclick="clearHistory()">Clear all data</button></div>';
+  el.innerHTML = html;
+}
+
+function setFilter(val) { historyFilter = val; renderHistory(); }
+
+// ===== KEYBOARD =====
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('testScreen').classList.contains('active')) return;
+  if (e.code === 'Space') { e.preventDefault(); playPair(); }
+  if (e.code === 'ArrowLeft') answer('lower');
+  if (e.code === 'ArrowDown' || e.code === 'KeyS') answer('same');
+  if (e.code === 'ArrowRight') answer('higher');
+  if (e.code === 'Escape' && isUnlimited) stopUnlimited();
+});
+
+// ===== INIT =====
+buildDiffGrid();
+
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('data:text/javascript;base64,' +
+    btoa(`self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))))`))
+    .catch(() => {});
+}
+</script>
+</body>
+</html>  /* Setup */
+  .difficulty-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 24px; }
+  .diff-btn {
+    background: #161616; border: 1px solid #2a2a2a; border-radius: 4px;
+    color: #ccc; font-family: inherit; font-size: 13px; padding: 12px 6px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .diff-btn:hover { border-color: #444; background: #1a1a1a; }
+  .diff-btn.selected { border-color: #e8a838; color: #e8a838; background: #1a1800; }
+  .diff-sub { font-size: 9px; color: #555; margin-top: 3px; }
+  .diff-btn.selected .diff-sub { color: #a07020; }
+
+  .trials-row { display: flex; justify-content: center; gap: 8px; margin-bottom: 24px; align-items: center; flex-wrap: wrap; }
+  .trial-btn {
+    background: #161616; border: 1px solid #2a2a2a; border-radius: 4px;
+    color: #ccc; font-family: inherit; font-size: 12px; padding: 10px 16px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .trial-btn:hover { border-color: #444; }
+  .trial-btn.selected { border-color: #e8a838; color: #e8a838; background: #1a1800; }
+  .trial-input {
+    background: #0a0a0a; border: 1px solid #2a2a2a; border-radius: 4px;
+    color: #ccc; font-family: inherit; font-size: 12px; text-align: center;
+    width: 56px; padding: 10px 4px; outline: none;
+  }
+  .trial-input:focus { border-color: #e8a838; color: #e8a838; }
+
+  .start-btn {
+    background: #e8a838; border: none; border-radius: 4px;
+    color: #0a0a0a; font-family: inherit; font-size: 13px; font-weight: 600;
+    padding: 14px 48px; cursor: pointer; letter-spacing: 1px; transition: all 0.15s;
+  }
+  .start-btn:hover { background: #f0b848; }
+
+  /* Test */
+  .progress-bar { width: 100%; height: 3px; background: #1a1a1a; border-radius: 2px; margin-bottom: 20px; overflow: hidden; }
+  .progress-fill { height: 100%; background: #e8a838; border-radius: 2px; transition: width 0.3s; }
+  .progress-bar.hidden { visibility: hidden; }
+  .trial-counter { font-size: 11px; color: #555; margin-bottom: 28px; }
+
+  .play-btn {
+    background: #161616; border: 1px solid #333; border-radius: 50%;
+    width: 72px; height: 72px; display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 28px; cursor: pointer; transition: all 0.2s;
+  }
+  .play-btn:hover { border-color: #555; background: #1e1e1e; }
+  .play-btn.playing { border-color: #e8a838; }
+  .play-icon {
+    width: 0; height: 0; border-style: solid;
+    border-width: 10px 0 10px 18px;
+    border-color: transparent transparent transparent #888;
+    margin-left: 3px; transition: border-color 0.2s;
+  }
+  .play-btn.playing .play-icon { border-color: transparent transparent transparent #e8a838; }
+
+  .answer-row { display: flex; justify-content: center; gap: 8px; margin-bottom: 14px; }
+  .answer-btn {
+    background: #161616; border: 1px solid #2a2a2a; border-radius: 4px;
+    color: #ccc; font-family: inherit; font-size: 13px; padding: 14px 16px;
+    cursor: pointer; transition: all 0.15s; flex: 1; max-width: 120px;
+  }
+  .answer-btn:hover { border-color: #555; background: #1e1e1e; }
+  .answer-btn:disabled { opacity: 0.3; cursor: default; }
+  .answer-btn.correct { border-color: #4CAF50; color: #4CAF50; background: #0a1a0a; }
+  .answer-btn.wrong { border-color: #F44336; color: #F44336; background: #1a0a0a; }
+
+  .feedback { font-size: 11px; height: 18px; margin-bottom: 6px; }
+  .feedback.correct { color: #4CAF50; }
+  .feedback.wrong { color: #F44336; }
+  .running-stats { font-size: 10px; color: #444; margin-top: 12px; }
+
+  .stop-row { margin-top: 20px; }
+  .stop-btn {
+    background: none; border: 1px solid #333; border-radius: 4px;
+    color: #888; font-family: inherit; font-size: 11px; padding: 10px 24px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .stop-btn:hover { border-color: #F44336; color: #F44336; }
+
+  /* Results */
+  .result-big { font-size: 44px; font-weight: 300; margin-bottom: 6px; }
+  .result-big.pass { color: #4CAF50; }
+  .result-big.fail { color: #F44336; }
+  .result-big.borderline { color: #e8a838; }
+  .result-detail { font-size: 12px; color: #888; margin-bottom: 4px; }
+  .result-pvalue { font-size: 11px; color: #555; margin-bottom: 20px; }
+
+  .matrix-title { font-size: 10px; color: #666; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .matrix { display: inline-block; margin-bottom: 20px; border-collapse: collapse; font-size: 11px; }
+  .matrix th { padding: 5px 10px; color: #777; font-weight: 400; border-bottom: 1px solid #222; }
+  .matrix td { padding: 5px 10px; text-align: center; border-bottom: 1px solid #111; }
+  .matrix .row-label { color: #777; text-align: right; font-style: italic; }
+  .matrix .diag { color: #4CAF50; font-weight: 600; }
+  .matrix .off-diag { color: #555; }
+  .matrix .off-diag.labeling { color: #e8a838; }
+  .matrix .off-diag.detection { color: #F44336; }
+
+  .error-summary {
+    font-size: 11px; color: #666; margin-bottom: 20px; line-height: 1.8;
+    max-width: 380px; margin-left: auto; margin-right: auto; text-align: left;
+  }
+  .error-summary .el { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+  .result-meta { font-size: 10px; color: #333; margin-bottom: 20px; }
+
+  .btn-row { display: flex; justify-content: center; gap: 10px; margin-top: 16px; }
+  .secondary-btn {
+    background: #161616; border: 1px solid #333; border-radius: 4px;
+    color: #ccc; font-family: inherit; font-size: 12px; padding: 12px 24px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .secondary-btn:hover { border-color: #555; }
+
+  /* History */
+  .history-empty { color: #444; font-size: 12px; margin-top: 40px; }
+  .history-controls { display: flex; justify-content: center; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+  .filter-btn {
+    background: #161616; border: 1px solid #2a2a2a; border-radius: 4px;
+    color: #888; font-family: inherit; font-size: 10px; padding: 6px 12px;
+    cursor: pointer; transition: all 0.15s;
+  }
+  .filter-btn:hover { border-color: #444; }
+  .filter-btn.active { border-color: #e8a838; color: #e8a838; }
+
+  .history-table { width: 100%; border-collapse: collapse; font-size: 11px; margin-bottom: 24px; }
+  .history-table th {
+    padding: 8px 6px; color: #666; font-weight: 400; border-bottom: 1px solid #222;
+    text-transform: uppercase; letter-spacing: 0.5px; font-size: 9px;
+  }
   .history-table td { padding: 7px 6px; border-bottom: 1px solid #111; color: #aaa; }
   .history-table .good { color: #4CAF50; }
   .history-table .mid { color: #e8a838; }
