@@ -638,6 +638,55 @@ function normalCDF(x) {
   return x > 0 ? 1 - p : p;
 }
 
+// ===== BOTTLENECK (rate-based, v8) =====
+// Both sub-skills are normalized to chance = 0.5, making them directly comparable.
+//
+// Detection = balanced accuracy on "same vs different":
+//   hit rate (answered different | trial was different) + CR rate (answered same | trial was same), averaged.
+//   Immune to response bias and trial-type imbalance.
+//
+// Labeling = direction accuracy conditional on both the trial being different
+//   AND the user having responded different (i.e., actually made a direction decision).
+//   Chance = 0.5.
+//
+// Bottleneck = whichever sub-skill has smaller advantage over 0.5,
+//   provided the gap is >= GAP_THRESHOLD and the labeling sample is >= MIN_LAB_N.
+
+const MIN_LAB_N = 10;   // min labeling decisions before we trust the estimate
+const GAP_THRESHOLD = 0.10; // 10pp gap required to call a winner
+
+function computeBottleneck(results) {
+  let nSame = 0, nDiff = 0, hits = 0, cr = 0, nLab = 0, labCorrect = 0;
+  results.forEach(r => {
+    if (r.trialType === 'same') {
+      nSame++;
+      if (r.userAnswer === 'same') cr++;
+    } else {
+      nDiff++;
+      if (r.userAnswer !== 'same') {
+        hits++;
+        nLab++;
+        if (r.userAnswer === r.trialType) labCorrect++;
+      }
+    }
+  });
+
+  const detBalAcc = (nDiff > 0 && nSame > 0) ? ((hits / nDiff) + (cr / nSame)) / 2 : null;
+  const labAcc    = nLab > 0 ? labCorrect / nLab : null;
+
+  let bottleneck;
+  if (detBalAcc === null || nLab < MIN_LAB_N) {
+    bottleneck = 'insufficient';
+  } else {
+    const gap = labAcc - detBalAcc; // positive = detection is the weaker skill
+    if      (gap >  GAP_THRESHOLD) bottleneck = 'detection';
+    else if (gap < -GAP_THRESHOLD) bottleneck = 'labeling';
+    else                            bottleneck = 'balanced';
+  }
+
+  return { detBalAcc, labAcc, nLab, bottleneck };
+}
+
 // ===== FINISH =====
 function finishTest() {
   clearTimers();
@@ -666,6 +715,7 @@ function buildSession() {
   types.forEach(a => { matrix[a] = {}; types.forEach(r => { matrix[a][r] = 0; }); });
   state.results.forEach(r => { matrix[r.trialType][r.userAnswer]++; });
 
+  // Legacy raw counts (kept for matrix coloring and backward compat)
   let detErr = 0, labErr = 0;
   state.results.forEach(r => {
     if (r.correct) return;
@@ -674,12 +724,16 @@ function buildSession() {
     else labErr++;
   });
 
+  // Rate-based bottleneck (v8)
+  const { detBalAcc, labAcc, nLab, bottleneck } = computeBottleneck(state.results);
+
   return {
     date: new Date().toISOString(),
     hzAt500: config.hzAt500,
     erbDelta: config.erbDelta,
     trials: n, correct: k, pct, pval,
     detectionErrors: detErr, labelingErrors: labErr,
+    detBalAcc, labAcc, nLab, bottleneck,
     matrix,
     rawTrials: state.results.map(r => ({
       trialType: r.trialType, userAnswer: r.userAnswer, correct: r.correct,
@@ -717,6 +771,47 @@ function renderMatrix(matrix, tableClass) {
   return html;
 }
 
+// ===== BOTTLENECK SUMMARY HTML =====
+// Shared by renderResult and session detail in history.
+// s must have: detBalAcc, labAcc, nLab, bottleneck, detectionErrors, labelingErrors, hzAt500
+function bottleneckSummaryHtml(s, totalErr) {
+  const detPct = s.detBalAcc != null ? Math.round(s.detBalAcc * 100) : null;
+  const labPct = s.labAcc    != null ? Math.round(s.labAcc    * 100) : null;
+
+  let sum = '';
+
+  if (detPct != null && labPct != null) {
+    sum += `<span class="el" style="background:#F44336"></span> Detection: ${detPct}% · `;
+    sum += `<span class="el" style="background:#e8a838"></span> Labeling: ${labPct}%`;
+    sum += ` <span style="color:#333">(chance 50%)</span><br><br>`;
+  } else {
+    // Fallback for sessions that predate v8 or had insufficient trials
+    sum += `<span class="el" style="background:#F44336"></span> Detection errors: ${s.detectionErrors}<br>`;
+    sum += `<span class="el" style="background:#e8a838"></span> Labeling errors: ${s.labelingErrors}<br><br>`;
+  }
+
+  if (totalErr === 0) {
+    sum += `Perfect at ${s.hzAt500} Hz. Try harder.`;
+  } else {
+    // Use stored bottleneck field if present; fall back to legacy count comparison for old sessions
+    const bnk = s.bottleneck ||
+      (s.labelingErrors > s.detectionErrors ? 'labeling' :
+       s.detectionErrors > s.labelingErrors ? 'detection' : 'balanced');
+
+    if (bnk === 'insufficient') {
+      sum += `Not enough labeling decisions (${s.nLab || 0}) to identify bottleneck.`;
+    } else if (bnk === 'detection') {
+      sum += `Bottleneck: <b>detection</b>. Difficulty perceiving the difference at ~${s.hzAt500} Hz.`;
+    } else if (bnk === 'labeling') {
+      sum += `Bottleneck: <b>labeling</b>. You hear it but mislabel direction.`;
+    } else {
+      sum += `Detection and labeling are roughly balanced at ~${s.hzAt500} Hz.`;
+    }
+  }
+
+  return sum;
+}
+
 let selectedSessionIdx = null;
 
 function showSessionDetail(idx) {
@@ -736,15 +831,9 @@ function renderResult(s) {
   // Matrix
   document.getElementById('matrixContainer').innerHTML = renderMatrix(s.matrix, 'matrix');
 
-  // Error summary
+  // Error summary with rate-based bottleneck
   const totalErr = s.trials - s.correct;
-  let sum = `<span class="el" style="background:#F44336"></span> Detection: ${s.detectionErrors}<br>`;
-  sum += `<span class="el" style="background:#e8a838"></span> Labeling: ${s.labelingErrors}<br><br>`;
-  if (totalErr === 0) sum += `Perfect at ${s.hzAt500} Hz. Try harder.`;
-  else if (s.labelingErrors > s.detectionErrors) sum += `Bottleneck: <b>labeling</b>. You hear it but mislabel direction.`;
-  else if (s.detectionErrors > s.labelingErrors) sum += `Bottleneck: <b>detection</b>. ~${s.hzAt500} Hz is at your threshold.`;
-  else sum += `Equal detection and labeling errors at ~${s.hzAt500} Hz.`;
-  document.getElementById('errorSummary').innerHTML = sum;
+  document.getElementById('errorSummary').innerHTML = bottleneckSummaryHtml(s, totalErr);
 
   const freqs = state.results.map(r => r.baseFreq);
   const diffs = state.results.filter(r => r.hzDiff > 0).map(r => r.hzDiff);
@@ -785,7 +874,12 @@ function renderHistory() {
     const ds = `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')}`;
     const ts = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
     const cls = h.pct >= 60 ? 'good' : h.pct >= 45 ? 'mid' : 'low';
-    html += `<tr onclick="showSessionDetail(${realIdx})"><td>${ds} ${ts}</td><td>${h.hzAt500}</td><td class="${cls}">${h.correct}/${h.trials} (${h.pct}%)</td><td>${h.detectionErrors}</td><td>${h.labelingErrors}</td></tr>`;
+
+    // Table columns: show % rates if available, else raw counts
+    const detCol = h.detBalAcc != null ? Math.round(h.detBalAcc * 100) + '%' : h.detectionErrors;
+    const labCol = h.labAcc    != null ? Math.round(h.labAcc    * 100) + '%' : h.labelingErrors;
+
+    html += `<tr onclick="showSessionDetail(${realIdx})"><td>${ds} ${ts}</td><td>${h.hzAt500}</td><td class="${cls}">${h.correct}/${h.trials} (${h.pct}%)</td><td>${detCol}</td><td>${labCol}</td></tr>`;
 
     // Session detail panel
     if (selectedSessionIdx === realIdx && h.matrix) {
@@ -793,16 +887,7 @@ function renderHistory() {
       html += `<div class="session-detail-title">${ds} ${ts} · ${h.hzAt500} Hz · ${h.trials} trials</div>`;
       html += renderMatrix(h.matrix, 'pooled-matrix');
       const totalErr = h.trials - h.correct;
-      let sum = `<div class="error-summary">`;
-      sum += `<span class="el" style="background:#F44336"></span> Detection: ${h.detectionErrors}<br>`;
-      sum += `<span class="el" style="background:#e8a838"></span> Labeling: ${h.labelingErrors}`;
-      if (totalErr > 0) {
-        if (h.labelingErrors > h.detectionErrors) sum += `<br><br>Bottleneck: <b>labeling</b>`;
-        else if (h.detectionErrors > h.labelingErrors) sum += `<br><br>Bottleneck: <b>detection</b>`;
-        else sum += `<br><br>Equal detection and labeling errors`;
-      }
-      sum += `</div>`;
-      html += sum;
+      html += `<div class="error-summary">${bottleneckSummaryHtml(h, totalErr)}</div>`;
       html += `<button class="session-close" onclick="showSessionDetail(${realIdx})">Close</button>`;
       html += `</div></td></tr>`;
     }
@@ -816,9 +901,11 @@ function renderHistory() {
     types.forEach(a => { pooled[a] = {}; types.forEach(r => { pooled[a][r] = 0; }); });
 
     let tt = 0, tc = 0, td = 0, tl = 0;
+    const allRaw = [];
     filtered.forEach(h => {
       tt += h.trials; tc += h.correct; td += h.detectionErrors; tl += h.labelingErrors;
       if (h.matrix) types.forEach(a => { types.forEach(r => { pooled[a][r] += (h.matrix[a]?.[r] || 0); }); });
+      if (h.rawTrials) h.rawTrials.forEach(t => allRaw.push(t));
     });
 
     html += '<div class="agg-section">';
@@ -826,10 +913,26 @@ function renderHistory() {
 
     html += renderMatrix(pooled, 'pooled-matrix');
 
+    // Compute pooled rate-based bottleneck from raw trials if available
+    let pooledBnkHtml = '';
+    if (allRaw.length > 0) {
+      const pb = computeBottleneck(allRaw);
+      const pDetPct = pb.detBalAcc != null ? Math.round(pb.detBalAcc * 100) : null;
+      const pLabPct = pb.labAcc    != null ? Math.round(pb.labAcc    * 100) : null;
+      if (pDetPct != null && pLabPct != null) {
+        pooledBnkHtml = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#F44336;vertical-align:middle;margin-right:4px"></span>Detection: ${pDetPct}% · `;
+        pooledBnkHtml += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#e8a838;vertical-align:middle;margin-right:4px"></span>Labeling: ${pLabPct}% <span style="color:#333">(chance 50%)</span>`;
+      }
+    }
+    if (!pooledBnkHtml) {
+      // Fallback to raw counts
+      pooledBnkHtml = `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#F44336;vertical-align:middle;margin-right:4px"></span>Detection errors: ${td} · `;
+      pooledBnkHtml += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#e8a838;vertical-align:middle;margin-right:4px"></span>Labeling errors: ${tl}`;
+    }
+
     html += `<div class="pooled-stats">`;
     html += `Accuracy: ${tc}/${tt} (${Math.round(tc/tt*100)}%)<br>`;
-    html += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#F44336;vertical-align:middle;margin-right:4px"></span>Detection: ${td} · `;
-    html += `<span style="display:inline-block;width:10px;height:10px;border-radius:2px;background:#e8a838;vertical-align:middle;margin-right:4px"></span>Labeling: ${tl}`;
+    html += pooledBnkHtml;
     html += `</div>`;
 
     // Band analysis
